@@ -2,6 +2,17 @@ module Version = PackageInfo.Version
 module Source = PackageInfo.Source
 module Dependencies = PackageInfo.Dependencies
 
+module BuildInfo = struct
+
+  type t = {
+    build : string list list;
+    install : string list list;
+    files : PackageInfo.File.t list;
+    patches : PackageInfo.File.t list;
+  }
+
+end
+
 type t = {
   name : string;
   version : PackageInfo.Version.t;
@@ -9,6 +20,7 @@ type t = {
   dependencies: (Dependencies.t [@default Dependencies.empty]);
   devDependencies: (Dependencies.t [@default Dependencies.empty]);
   opam : PackageInfo.OpamInfo.t option;
+  buildInfo : BuildInfo.t option;
   kind : kind;
 }
 
@@ -40,6 +52,7 @@ let ofOpamManifest ?name ?version (manifest : OpamManifest.t) =
     devDependencies = manifest.devDependencies;
     source;
     opam = Some (OpamManifest.toPackageJson manifest version);
+    buildInfo = None;
     kind = Esy;
   }
 
@@ -67,10 +80,43 @@ let ofManifest ?name ?version (manifest : Manifest.t) =
     devDependencies = manifest.devDependencies;
     source;
     opam = None;
+    buildInfo = None;
     kind =
       if manifest.hasEsyManifest
       then Esy
       else Npm
+  }
+
+let ofOpamFile ~name ~version (_url : OpamFile.URL.t option) (opam : OpamFile.OPAM.t) =
+  let open Run.Syntax in
+
+  let env _kind _id = Some (OpamVariable.bool true) in
+
+  let depends = OpamFile.OPAM.depends opam in
+
+  
+  let _dependencies =
+    let formula =
+      OpamFilter.filter_formula (env `regular) depends
+      [@ocaml.ppwarning "s"]
+  in
+    let dnf = OpamFormula.to_dnf formula in
+    let f map conj =
+      let f map ((name, _constr) : OpamFormula.atom) =
+        let name = OpamPackage.Name.to_string name in
+        let name = "@opam/" ^ name in
+        match StringMap.find_opt name map with
+        | Some _formula -> map
+        | None -> map
+      in
+      List.fold_left ~f ~init:map conj
+    in
+    List.fold_left ~f ~init:StringMap.empty dnf
+  in
+
+  return {
+    name;
+    version;
   }
 
 let pp fmt pkg =

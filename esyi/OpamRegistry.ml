@@ -19,10 +19,19 @@ type t = {
 
 type pkg = {
   name: PackageName.t;
+  version: Version.t;
   opam: Path.t;
   url: Path.t;
-  version: Version.t;
 }
+
+module Manifest = struct
+  type t = {
+    name: PackageName.t;
+    version: Version.t;
+    opam : OpamFile.OPAM.t;
+    url : OpamFile.URL.t option;
+  }
+end
 
 let init ~cfg () =
   let open RunAsync.Syntax in
@@ -109,85 +118,77 @@ let versions registry ~(name : PackageName.t) =
     |> List.map ~f:(fun manifest -> (manifest.version, manifest))
   )
 
-let resolveSourceSpec spec =
-  let open RunAsync.Syntax in
+(* TODO: remove *)
+(* let resolveSourceSpec spec = *)
+(*   let open RunAsync.Syntax in *)
 
-  let errorResolvingSpec spec =
-      let msg =
-        Format.asprintf
-          "unable to resolve: %a"
-          SourceSpec.pp spec
-      in
-      error msg
-  in
+(*   let errorResolvingSpec spec = *)
+(*       let msg = *)
+(*         Format.asprintf *)
+(*           "unable to resolve: %a" *)
+(*           SourceSpec.pp spec *)
+(*       in *)
+(*       error msg *)
+(*   in *)
 
-  match spec with
-  | SourceSpec.NoSource ->
-    return Source.NoSource
+(*   match spec with *)
+(*   | SourceSpec.NoSource -> *)
+(*     return Source.NoSource *)
 
-  | SourceSpec.Archive (url, Some checksum) ->
-    return (Source.Archive (url, checksum))
-  | SourceSpec.Archive (url, None) ->
-    return (Source.Archive (url, "fake-checksum-fix-me"))
+(*   | SourceSpec.Archive (url, Some checksum) -> *)
+(*     return (Source.Archive (url, checksum)) *)
+(*   | SourceSpec.Archive (url, None) -> *)
+(*     return (Source.Archive (url, "fake-checksum-fix-me")) *)
 
-  | SourceSpec.Git {remote; ref = Some ref} -> begin
-    match%bind Git.lsRemote ~ref ~remote () with
-    | Some commit -> return (Source.Git {remote; commit})
-    | None when Git.isCommitLike ref -> return (Source.Git {remote; commit = ref})
-    | None -> errorResolvingSpec spec
-    end
-  | SourceSpec.Git {remote; ref = None} -> begin
-    match%bind Git.lsRemote ~remote () with
-    | Some commit -> return (Source.Git {remote; commit})
-    | None -> errorResolvingSpec spec
-    end
+(*   | SourceSpec.Git {remote; ref = Some ref} -> begin *)
+(*     match%bind Git.lsRemote ~ref ~remote () with *)
+(*     | Some commit -> return (Source.Git {remote; commit}) *)
+(*     | None when Git.isCommitLike ref -> return (Source.Git {remote; commit = ref}) *)
+(*     | None -> errorResolvingSpec spec *)
+(*     end *)
+(*   | SourceSpec.Git {remote; ref = None} -> begin *)
+(*     match%bind Git.lsRemote ~remote () with *)
+(*     | Some commit -> return (Source.Git {remote; commit}) *)
+(*     | None -> errorResolvingSpec spec *)
+(*     end *)
 
-  | SourceSpec.Github {user; repo; ref = Some ref} -> begin
-    let remote = Printf.sprintf "https://github.com/%s/%s.git" user repo in
-    match%bind Git.lsRemote ~ref ~remote () with
-    | Some commit -> return (Source.Github {user; repo; commit})
-    | None when Git.isCommitLike ref -> return (Source.Github {user; repo; commit = ref})
-    | None -> errorResolvingSpec spec
-    end
-  | SourceSpec.Github {user; repo; ref = None} -> begin
-    let remote = Printf.sprintf "https://github.com/%s/%s.git" user repo in
-    match%bind Git.lsRemote ~remote () with
-    | Some commit -> return (Source.Github {user; repo; commit})
-    | None -> errorResolvingSpec spec
-    end
+(*   | SourceSpec.Github {user; repo; ref = Some ref} -> begin *)
+(*     let remote = Printf.sprintf "https://github.com/%s/%s.git" user repo in *)
+(*     match%bind Git.lsRemote ~ref ~remote () with *)
+(*     | Some commit -> return (Source.Github {user; repo; commit}) *)
+(*     | None when Git.isCommitLike ref -> return (Source.Github {user; repo; commit = ref}) *)
+(*     | None -> errorResolvingSpec spec *)
+(*     end *)
+(*   | SourceSpec.Github {user; repo; ref = None} -> begin *)
+(*     let remote = Printf.sprintf "https://github.com/%s/%s.git" user repo in *)
+(*     match%bind Git.lsRemote ~remote () with *)
+(*     | Some commit -> return (Source.Github {user; repo; commit}) *)
+(*     | None -> errorResolvingSpec spec *)
+(*     end *)
 
-  | SourceSpec.LocalPath path ->
-    return (Source.LocalPath path)
+(*   | SourceSpec.LocalPath path -> *)
+(*     return (Source.LocalPath path) *)
 
-  | SourceSpec.LocalPathLink path ->
-    return (Source.LocalPathLink path)
-
+(*   | SourceSpec.LocalPathLink path -> *)
+(*     return (Source.LocalPathLink path) *)
 
 let version registry ~(name : PackageName.t) ~version =
   let open RunAsync.Syntax in
   match%bind getPackage registry ~name ~version with
   | None -> return None
-  | Some { opam = opamFilename; url = urlFilename; name; version } ->
-    let%bind sourceSpec =
-      if%bind Fs.exists urlFilename
+  | Some { opam = opamPath; url = urlPath; name; version } ->
+    let%bind url =
+      if%bind Fs.exists urlPath
       then
-        OpamManifest.runParsePath
-          ~parser:OpamManifest.parseUrl
-          urlFilename
-      else return SourceSpec.NoSource
+        let%bind data = Fs.readFile urlPath in
+        let url = OpamFile.URL.read_from_string data in
+        return (Some url)
+      else return None
     in
-    let%bind source = resolveSourceSpec sourceSpec in
-    let%bind manifest =
-      let%bind manifest = OpamManifest.runParsePath
-        ~parser:(OpamManifest.parseManifest ~name ~version)
-        opamFilename
-      in
-      return OpamManifest.{manifest with source}
+    let%bind opam =
+      let%bind data = Fs.readFile opamPath in
+      let opam = OpamFile.OPAM.read_from_string data in
+      return opam
     in
-    begin match%bind OpamOverrides.get registry.overrides name version with
-      | None ->
-        return (Some manifest)
-      | Some override ->
-        let manifest = OpamOverrides.apply manifest override in
-        return (Some manifest)
-    end
+    (* TODO: apply overrides here *)
+    return (Some {Manifest. name; version; opam; url})

@@ -17,6 +17,10 @@ lib: [
   "_build/install/default/lib/esyi/EsyInstaller.cmx" {"EsyInstaller.cmx"}
   "_build/install/default/lib/esyi/EsyInstaller.cmt" {"EsyInstaller.cmt"}
   "_build/install/default/lib/esyi/EsyInstaller.ml-gen" {"EsyInstaller.ml-gen"}
+  "_build/install/default/lib/esyi/EsyInstaller__EsyOpam.cmi" {"EsyInstaller__EsyOpam.cmi"}
+  "_build/install/default/lib/esyi/EsyInstaller__EsyOpam.cmx" {"EsyInstaller__EsyOpam.cmx"}
+  "_build/install/default/lib/esyi/EsyInstaller__EsyOpam.cmt" {"EsyInstaller__EsyOpam.cmt"}
+  "_build/install/default/lib/esyi/EsyOpam.ml" {"EsyOpam.ml"}
   "_build/install/default/lib/esyi/EsyInstaller__Fetch.cmi" {"EsyInstaller__Fetch.cmi"}
   "_build/install/default/lib/esyi/EsyInstaller__Fetch.cmx" {"EsyInstaller__Fetch.cmx"}
   "_build/install/default/lib/esyi/EsyInstaller__Fetch.cmt" {"EsyInstaller__Fetch.cmt"}

@@ -2,6 +2,17 @@
  * This normalizes the info between different manifests types (opam and npm).
  *)
 
+module BuildInfo : sig
+
+  type t = {
+    build : string list list;
+    install : string list list;
+    files : PackageInfo.File.t list;
+    patches : PackageInfo.File.t list;
+  }
+
+end
+
 type t = {
   name : string;
   version : PackageInfo.Version.t;
@@ -11,6 +22,8 @@ type t = {
 
   (* TODO: make it non specific to opam. *)
   opam : PackageInfo.OpamInfo.t option;
+
+  buildInfo : BuildInfo.t option;
   kind : kind;
 }
 
@@ -28,6 +41,13 @@ val ofOpamManifest :
   ?name:string
   -> ?version:PackageInfo.Version.t
   -> OpamManifest.t
+  -> t Run.t
+
+val ofOpamFile :
+  ?name:string
+  -> ?version:PackageInfo.Version.t
+  -> OpamFile.URL.t option
+  -> OpamFile.OPAM.t
   -> t Run.t
 
 (**

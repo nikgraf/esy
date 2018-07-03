@@ -155,11 +155,12 @@ let package ~(resolution : Resolution.t) resolver =
           ~name:resolution.name
           ~version:resolution.version
           manifest
-      | `Opam manifest ->
-        Package.ofOpamManifest
+      | `Opam {OpamRegistry.Manifest. opam; url; _} ->
+        Package.ofOpamFile
           ~name:resolution.name
           ~version:resolution.version
-          manifest
+          url
+          opam
     ) in
 
     return pkg

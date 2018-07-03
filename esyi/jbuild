@@ -21,4 +21,6 @@
               logs
               logs.lwt
               dose3.algo
+              opam-format
+              opam-core
               opam-file-format))))

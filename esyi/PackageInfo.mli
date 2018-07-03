@@ -146,6 +146,13 @@ module ExportedEnv : sig
   val to_yojson : t Json.encoder
 end
 
+module File : sig
+  type t = {
+    path : Path.t;
+    contents : string;
+  }
+end
+
 module OpamInfo : sig
   type t = {
     packageJson : Json.t;

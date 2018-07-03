@@ -583,6 +583,13 @@ module ExportedEnv = struct
 
 end
 
+module File = struct
+  type t = {
+    path : Path.t;
+    contents : string;
+  }
+end
+
 module OpamInfo = struct
   type t = {
     packageJson : Json.t;

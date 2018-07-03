@@ -304,6 +304,7 @@ let solveDependencies ~installed ~strategy dependencies solver =
     version = Version.parseExn "0.0.0";
     source = Source.NoSource;
     opam = None;
+    buildInfo = None;
     dependencies;
     devDependencies = Dependencies.empty;
     kind = Esy;
