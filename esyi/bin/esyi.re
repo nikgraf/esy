@@ -100,30 +100,24 @@ module Api = {
       | None => OpamVersion.Version.parseExn("1.0.0")
       };
 
-    let%bind name =
-      RunAsync.ofRun(
-        switch (name) {
-        | Some(name) => OpamManifest.PackageName.ofNpm("@opam/" ++ name)
-        | None => OpamManifest.PackageName.ofNpm("@opam/unknown-opam-package")
-        },
-      );
+    let name =
+      switch (name) {
+      | Some(name) => "@opam/" ++ name
+      | None => "@opam/unknown-opam-package"
+      };
 
-    let%bind manifest = {
-      let%bind manifest =
-        OpamManifest.runParsePath(
-          ~parser=OpamManifest.parseManifest(~name, ~version),
-          path,
-        );
-      return(
-        OpamManifest.{...manifest, source: PackageInfo.Source.NoSource},
+    let%bind data = Fs.readFile(path);
+    let opam = OpamFile.OPAM.read_from_string(data);
+    let%bind pkg =
+      RunAsync.ofRun(
+        Package.ofOpamFile(
+          ~name,
+          ~version=PackageInfo.Version.Opam(version),
+          None,
+          opam,
+        ),
       );
-    };
-    let {PackageInfo.OpamInfo.packageJson, _} =
-      OpamManifest.toPackageJson(
-        manifest,
-        PackageInfo.Version.Opam(version),
-      );
-    print_endline(Yojson.Safe.pretty_to_string(packageJson));
+    print_endline(Yojson.Safe.pretty_to_string(Package.to_yojson(pkg)));
     return();
   };
 };

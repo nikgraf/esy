@@ -10,7 +10,7 @@
                     ppxlib
                     ppx_inline_test)))
   (inline_tests)
-  (flags (:standard (-w -39) "-open" "EsyLib"))
+  (flags (:standard (-w -39 -warn-error -22) "-open" "EsyLib"))
   (libraries (
               esy-lib
               str

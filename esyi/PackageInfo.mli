@@ -151,6 +151,8 @@ module File : sig
     path : Path.t;
     contents : string;
   }
+  val to_yojson : t Json.encoder
+  val of_yojson : t Json.decoder
 end
 
 module OpamInfo : sig
@@ -159,7 +161,7 @@ module OpamInfo : sig
     files : (Path.t * string) list;
     patches : string list;
   }
-  val to_yojson : t -> Json.t
-  val of_yojson : Json.t -> t Ppx_deriving_yojson_runtime.error_or
+  val to_yojson : t Json.encoder
+  val of_yojson : t Json.decoder
   val show : t -> string
 end

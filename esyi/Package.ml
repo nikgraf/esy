@@ -1,6 +1,38 @@
+module Req = PackageInfo.Req
 module Version = PackageInfo.Version
+module VersionSpec = PackageInfo.VersionSpec
 module Source = PackageInfo.Source
-module Dependencies = PackageInfo.Dependencies
+module SourceSpec = PackageInfo.SourceSpec
+
+module Dep = struct
+  type t = name * constr [@@deriving to_yojson]
+
+  and name = string
+
+  and relop =
+    | EQ
+    | NEQ
+    | LT
+    | LTE
+    | GT
+    | GTE
+
+  and version =
+    | Npm of SemverVersion.Version.t
+    | Opam of OpamVersion.Version.t
+
+  and constr =
+    | Rel of relop * version
+    | Source of SourceSpec.t
+end
+
+module Deps = struct
+
+  type t = Dep.t conj disj [@@deriving to_yojson]
+  and 'a conj = 'a list
+  and 'a disj = 'a list
+
+end
 
 module BuildInfo = struct
 
@@ -9,7 +41,7 @@ module BuildInfo = struct
     install : string list list;
     files : PackageInfo.File.t list;
     patches : PackageInfo.File.t list;
-  }
+  } [@@deriving to_yojson]
 
 end
 
@@ -17,44 +49,44 @@ type t = {
   name : string;
   version : PackageInfo.Version.t;
   source : PackageInfo.Source.t;
-  dependencies: (Dependencies.t [@default Dependencies.empty]);
-  devDependencies: (Dependencies.t [@default Dependencies.empty]);
+  dependencies: Deps.t;
+  devDependencies: Deps.t;
   opam : PackageInfo.OpamInfo.t option;
   buildInfo : BuildInfo.t option;
   kind : kind;
-}
+} [@@deriving to_yojson]
 
 and kind =
   | Esy
   | Npm
 
-let ofOpamManifest ?name ?version (manifest : OpamManifest.t) =
-  let open Run.Syntax in
-  let name =
-    match name with
-    | Some name -> name
-    | None -> OpamManifest.PackageName.toNpm manifest.name
-  in
-  let version =
-    match version with
-    | Some version -> version
-    | None -> Version.Opam manifest.version
-  in
-  let source =
-    match version with
-    | Version.Source src -> src
-    | _ -> manifest.source
-  in
-  return {
-    name;
-    version;
-    dependencies = manifest.dependencies;
-    devDependencies = manifest.devDependencies;
-    source;
-    opam = Some (OpamManifest.toPackageJson manifest version);
-    buildInfo = None;
-    kind = Esy;
-  }
+(* let ofOpamManifest ?name ?version (manifest : OpamManifest.t) = *)
+(*   let open Run.Syntax in *)
+(*   let name = *)
+(*     match name with *)
+(*     | Some name -> name *)
+(*     | None -> OpamManifest.PackageName.toNpm manifest.name *)
+(*   in *)
+(*   let version = *)
+(*     match version with *)
+(*     | Some version -> version *)
+(*     | None -> Version.Opam manifest.version *)
+(*   in *)
+(*   let source = *)
+(*     match version with *)
+(*     | Version.Source src -> src *)
+(*     | _ -> manifest.source *)
+(*   in *)
+(*   return { *)
+(*     name; *)
+(*     version; *)
+(*     dependencies = manifest.dependencies; *)
+(*     devDependencies = manifest.devDependencies; *)
+(*     source; *)
+(*     opam = Some (OpamManifest.toPackageJson manifest version); *)
+(*     buildInfo = None; *)
+(*     kind = Esy; *)
+(*   } *)
 
 let ofManifest ?name ?version (manifest : Manifest.t) =
   let open Run.Syntax in
@@ -73,11 +105,16 @@ let ofManifest ?name ?version (manifest : Manifest.t) =
     | Version.Source src -> src
     | _ -> manifest.source
   in
+  let dependencies =
+    manifest.dependencies
+    |> PackageInfo.Dependencies.toList
+    |> List
+  in
   return {
     name;
     version;
-    dependencies = manifest.dependencies;
-    devDependencies = manifest.devDependencies;
+    dependencies = [manifest.dependencies];
+    devDependencies = [manifest.devDependencies];
     source;
     opam = None;
     buildInfo = None;
@@ -90,33 +127,68 @@ let ofManifest ?name ?version (manifest : Manifest.t) =
 let ofOpamFile ~name ~version (_url : OpamFile.URL.t option) (opam : OpamFile.OPAM.t) =
   let open Run.Syntax in
 
-  let env _kind _id = Some (OpamVariable.bool true) in
-
   let depends = OpamFile.OPAM.depends opam in
 
-  
-  let _dependencies =
-    let formula =
-      OpamFilter.filter_formula (env `regular) depends
-      [@ocaml.ppwarning "s"]
-  in
+  let opamFormulaToDependencies formula =
+    let module F = SemverVersion.Formula in
     let dnf = OpamFormula.to_dnf formula in
-    let f map conj =
-      let f map ((name, _constr) : OpamFormula.atom) =
-        let name = OpamPackage.Name.to_string name in
-        let name = "@opam/" ^ name in
-        match StringMap.find_opt name map with
-        | Some _formula -> map
-        | None -> map
+    let dependencies =
+      let f reqs conj =
+        let conjMap =
+          let f map ((name, _constr) : OpamFormula.atom) =
+            let name = OpamPackage.Name.to_string name in
+            let name = "@opam/" ^ name in
+            match StringMap.find_opt name map with
+            | Some prevConstr ->
+              let constr = F.Constraint.ANY::prevConstr in
+              StringMap.add name constr map
+            | None ->
+              let constr = F.Constraint.ANY in
+              StringMap.add name [constr] map
+          in
+          List.fold_left ~f ~init:StringMap.empty conj
+        in
+        let formulas =
+          let f name constrs reqs =
+            let formula = F.OR [F.AND constrs] in
+            let spec = VersionSpec.Npm formula in
+            let req = Req.ofSpec ~name ~spec in
+            req::reqs
+          in
+          Dependencies.ofList (StringMap.fold f conjMap [])
+        in
+        formulas::reqs
       in
-      List.fold_left ~f ~init:map conj
+      List.fold_left ~f ~init:[] dnf
     in
-    List.fold_left ~f ~init:StringMap.empty dnf
+    dependencies
+  in
+
+  let dependencies =
+    let formula =
+      OpamFilter.filter_deps
+        ~build:true ~post:true ~test:false ~doc:false ~dev:false
+        depends
+    in opamFormulaToDependencies formula
+  in
+
+  let devDependencies =
+    let formula =
+      OpamFilter.filter_deps
+        ~build:true ~post:true ~test:true ~doc:true ~dev:true
+        depends
+    in opamFormulaToDependencies formula
   in
 
   return {
     name;
     version;
+    dependencies;
+    devDependencies;
+    kind = Esy;
+    opam = None;
+    source = PackageInfo.Source.NoSource;
+    buildInfo = None;
   }
 
 let pp fmt pkg =

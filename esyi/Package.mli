@@ -31,21 +31,12 @@ and kind =
   | Esy
   | Npm
 
-(**
- * Make package out of opam manifest.
- *
- * Optional arguments `name` and `version` are used to override name and version
- * specified in manifest if needed.
- *)
-val ofOpamManifest :
-  ?name:string
-  -> ?version:PackageInfo.Version.t
-  -> OpamManifest.t
-  -> t Run.t
+val of_yojson : t Json.decoder
+val to_yojson : t Json.encoder
 
 val ofOpamFile :
-  ?name:string
-  -> ?version:PackageInfo.Version.t
+  name:string
+  -> version:PackageInfo.Version.t
   -> OpamFile.URL.t option
   -> OpamFile.OPAM.t
   -> t Run.t

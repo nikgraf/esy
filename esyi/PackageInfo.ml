@@ -587,7 +587,7 @@ module File = struct
   type t = {
     path : Path.t;
     contents : string;
-  }
+  } [@@deriving yojson]
 end
 
 module OpamInfo = struct
