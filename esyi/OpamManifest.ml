@@ -526,3 +526,93 @@ let runParsePath ~parser path =
     logProblem Logs.Error p;%lwt
     error "error reading opam file"
 
+(* let ofOpamManifest ?name ?version (manifest : OpamManifest.t) = *)
+(*   let open Run.Syntax in *)
+(*   let name = *)
+(*     match name with *)
+(*     | Some name -> name *)
+(*     | None -> OpamManifest.PackageName.toNpm manifest.name *)
+(*   in *)
+(*   let version = *)
+(*     match version with *)
+(*     | Some version -> version *)
+(*     | None -> Version.Opam manifest.version *)
+(*   in *)
+(*   let source = *)
+(*     match version with *)
+(*     | Version.Source src -> src *)
+(*     | _ -> manifest.source *)
+(*   in *)
+(*   return { *)
+(*     name; *)
+(*     version; *)
+(*     dependencies = manifest.dependencies; *)
+(*     devDependencies = manifest.devDependencies; *)
+(*     source; *)
+(*     opam = Some (OpamManifest.toPackageJson manifest version); *)
+(*     buildInfo = None; *)
+(*     kind = Esy; *)
+(*   } *)
+
+let toPackage ~name ~version (_url : OpamFile.URL.t option) (opam : OpamFile.OPAM.t) =
+  let open Run.Syntax in
+
+  let depends = OpamFile.OPAM.depends opam in
+
+  let depsOfFormula formula =
+    let module F = SemverVersion.Formula in
+    let formula = OpamFormula.to_cnf formula in
+
+    let translateConstr (relop : OpamFormula.relop) v =
+      let module C = OpamVersion.Formula.Constraint in
+      match relop with
+      | `Eq -> C.EQ v
+      | `Neq -> C.NEQ v
+      | `Lt -> C.LT v
+      | `Gt -> C.GT v
+      | `Leq -> C.LTE v
+      | `Geq -> C.GTE v
+    in
+
+    let translateAtom ((name, constr) : OpamFormula.atom) =
+      let name = OpamPackage.Name.to_string name in
+      let constr =
+        match constr with
+        | None -> OpamVersion.Formula.Constraint.ANY
+        | Some (relop, v) ->
+          let v = OpamPackage.Version.to_string v in
+          let v = OpamVersion.Version.parseExn v in
+          translateConstr relop v
+      in
+      {Package.Dep.name; constr = Opam constr;}
+    in
+    List.map ~f:(List.map ~f:translateAtom) formula
+  in
+
+  let dependencies =
+    let formula =
+      OpamFilter.filter_deps
+        ~build:true ~post:true ~test:false ~doc:false ~dev:false
+        depends
+    in depsOfFormula formula
+  in
+
+  let devDependencies =
+    let formula =
+      OpamFilter.filter_deps
+        ~build:true ~post:true ~test:true ~doc:true ~dev:true
+        depends
+    in depsOfFormula formula
+  in
+
+  return {
+    Package.
+    name;
+    version;
+    dependencies;
+    devDependencies;
+    kind = Esy;
+    opam = None;
+    source = PackageInfo.Source.NoSource;
+    buildInfo = None;
+  }

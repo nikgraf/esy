@@ -161,6 +161,44 @@ module SourceSpec = struct
 
   let pp fmt spec =
     Fmt.pf fmt "%s" (toString spec)
+
+  let matches ~source spec =
+    match spec, source with
+    | LocalPath p1, Source.LocalPath p2 ->
+      Path.equal p1 p2
+    | LocalPath p1, Source.LocalPathLink p2 ->
+      Path.equal p1 p2
+    | LocalPath _, _ -> false
+
+    | LocalPathLink p1, Source.LocalPathLink p2 ->
+      Path.equal p1 p2
+    | LocalPathLink _, _ -> false
+
+    | Github ({ref = Some specRef; _} as spec), Source.Github src ->
+      String.(
+        equal src.user spec.user
+        && equal src.repo spec.repo
+        && equal src.commit specRef
+      )
+    | Github ({ref = None; _} as spec), Source.Github src ->
+      String.(equal spec.user src.user && equal spec.repo src.repo)
+    | Github _, _ -> false
+
+
+    | Git ({ref = Some specRef; _} as spec), Source.Git src ->
+      String.(
+        equal spec.remote src.remote
+        && equal specRef src.commit
+      )
+    | Git ({ref = None; _} as spec), Source.Git src ->
+      String.(equal spec.remote src.remote)
+    | Git _, _ -> false
+
+    | Archive (url1, _), Source.Archive (url2, _)  ->
+      String.equal url1 url2
+    | Archive _, _ -> false
+
+    | NoSource, _ -> false
 end
 
 (**
@@ -475,60 +513,6 @@ module Dependencies = struct
       Req.make ~name:"prev" ~spec:"1.0.0";
       Req.make ~name:"pkg" ~spec:"^2.0.0";
     ]
-end
-
-module Resolutions = struct
-  type t = Version.t StringMap.t
-
-  let empty = StringMap.empty
-
-  let find resolutions pkgName =
-    StringMap.find_opt pkgName resolutions
-
-  let entries = StringMap.bindings
-
-  let to_yojson v =
-    let items =
-      let f k v items = (k, (`String (Version.toString v)))::items in
-      StringMap.fold f v []
-    in
-    `Assoc items
-
-  let of_yojson =
-    let open Result.Syntax in
-    let parseKey k =
-      match PackagePath.parse k with
-      | Ok ((_path, name)) -> Ok name
-      | Error err -> Error err
-    in
-    let parseValue key =
-      function
-      | `String v -> begin
-        match String.cut ~sep:"/" key, String.cut ~sep:":" v with
-        | Some ("@opam", _), Some("opam", _) -> Version.parse v
-        | Some ("@opam", _), _ -> Version.parse ("opam:" ^ v)
-        | _ -> Version.parse v
-        end
-      | _ -> Error "expected string"
-    in
-    function
-    | `Assoc items ->
-      let f res (key, json) =
-        let%bind key = parseKey key in
-        let%bind value = parseValue key json in
-        Ok (StringMap.add key value res)
-      in
-      Result.List.foldLeft ~f ~init:empty items
-    | _ -> Error "expected object"
-
-  let apply resolutions req =
-    let name = Req.name req in
-    match find resolutions name with
-    | Some version ->
-      let spec = VersionSpec.ofVersion version in
-      Some (Req.ofSpec ~name ~spec)
-    | None -> None
-
 end
 
 module ExportedEnv = struct

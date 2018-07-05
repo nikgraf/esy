@@ -20,6 +20,7 @@ module Constraint = struct
 
     type t =
       | EQ of Version.t
+      | NEQ of Version.t
       | GT of Version.t
       | GTE of Version.t
       | LT of Version.t
@@ -31,6 +32,7 @@ module Constraint = struct
     let matchesSimple ~version constr =
       match constr with
       | EQ a -> Version.compare a version = 0
+      | NEQ a -> Version.compare a version != 0
       | ANY -> true
       | NONE -> false
 
@@ -39,8 +41,9 @@ module Constraint = struct
       | LT a -> Version.compare a version > 0
       | LTE a -> Version.compare a version >= 0
 
-    let matches ~matchPrerelease ~version constr  =
+    let matches ?(matchPrerelease=VersionSet.empty) ~version constr  =
       match Version.prerelease version, constr with
+      | _, NEQ _
       | _, EQ _
       | _, NONE
       | false, ANY
@@ -60,6 +63,7 @@ module Constraint = struct
 
     let rec toString constr =
       match constr with
+      | NEQ a -> "!= " ^ Version.toString a
       | EQ a -> Version.toString a
       | ANY -> "*"
       | NONE -> "none"
@@ -70,6 +74,7 @@ module Constraint = struct
 
     let rec map ~f constr =
       match constr with
+      | NEQ a-> NEQ (f a)
       | EQ a-> EQ (f a)
       | ANY -> ANY
       | NONE -> NONE
@@ -120,6 +125,7 @@ module Formula = struct
               | Constraint.NONE
               | Constraint.ANY -> vs
               | Constraint.EQ v
+              | Constraint.NEQ v
               | Constraint.LTE v
               | Constraint.LT v
               | Constraint.GTE v

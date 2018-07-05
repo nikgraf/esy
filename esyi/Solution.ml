@@ -90,7 +90,7 @@ let dependenciesHash (manifest : Manifest.Root.t) =
     in
     List.fold_left
       ~f ~init:digest
-      (PackageInfo.Resolutions.entries resolutions)
+      (Package.Resolutions.entries resolutions)
   in
   let digest =
     Digest.string ""

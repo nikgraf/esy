@@ -59,6 +59,8 @@ module SourceSpec : sig
   val toString : t -> string
   val to_yojson : t -> [> `String of string ]
   val pp : t Fmt.t
+  val matches : source:Source.t -> t -> bool
+  val ofSource : Source.t -> t
 end
 
 (**
@@ -121,19 +123,6 @@ module Dependencies : sig
 
   val of_yojson : Json.t -> (t, string) result
   val to_yojson : t -> Json.t
-end
-
-module Resolutions : sig
-  type t
-
-  val empty : t
-  val find : t -> string -> Version.t option
-  val apply : t -> Req.t -> Req.t option
-
-  val entries : t -> (string * Version.t) list
-
-  val to_yojson : t Json.encoder
-  val of_yojson : t Json.decoder
 end
 
 module ExportedEnv : sig

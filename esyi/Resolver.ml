@@ -151,12 +151,12 @@ let package ~(resolution : Resolution.t) resolver =
     let%bind pkg = RunAsync.ofRun (
       match manifest with
       | `PackageJson manifest ->
-        Package.ofManifest
+        Manifest.toPackage
           ~name:resolution.name
           ~version:resolution.version
           manifest
       | `Opam {OpamRegistry.Manifest. opam; url; _} ->
-        Package.ofOpamFile
+        OpamManifest.toPackage
           ~name:resolution.name
           ~version:resolution.version
           url
@@ -166,11 +166,8 @@ let package ~(resolution : Resolution.t) resolver =
     return pkg
   end
 
-let resolve ~req resolver =
+let resolve ~name ~formula resolver =
   let open RunAsync.Syntax in
-
-  let name = Req.name req in
-  let spec = Req.spec req in
 
   let errorResolvingReq req msg =
     let msg = Format.asprintf "unable to resolve %a: %s" Req.pp req msg in
@@ -197,7 +194,7 @@ let resolve ~req resolver =
           (* precache manifest so we don't have to fetch it once more *)
           let key = (resolution.name, resolution.version) in
           PackageCache.ensureComputed resolver.pkgCache key begin fun _ ->
-            Lwt.return (Package.ofManifest ~version manifest)
+            Lwt.return (Manifest.toPackage ~version manifest)
           end;
 
           resolution

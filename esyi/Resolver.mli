@@ -15,7 +15,14 @@ type t
 val make : cfg:Config.t -> unit -> t RunAsync.t
 
 (** Resolve package request into a list of resolutions *)
-val resolve : req:PackageInfo.Req.t -> t -> (PackageInfo.Req.t * Resolution.t list) RunAsync.t
+val resolve :
+  name:string
+  -> formula:Package.ConstraintFormula.t
+  -> t
+  -> (PackageInfo.Req.t * Resolution.t list) RunAsync.t
 
 (** Fetch the package metadata given the resolution. *)
-val package : resolution:Resolution.t -> t -> Package.t RunAsync.t
+val package :
+  resolution:Resolution.t
+  -> t
+  -> Package.t RunAsync.t

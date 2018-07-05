@@ -4,7 +4,6 @@ module Version = PackageInfo.Version
 module VersionSpec = PackageInfo.VersionSpec
 module Dependencies = PackageInfo.Dependencies
 module Req = PackageInfo.Req
-module Resolutions = PackageInfo.Resolutions
 
 module Strategy = struct
   let trendy = "-removed,-notuptodate,-new"
@@ -15,7 +14,7 @@ type t = {
   cfg : Config.t;
   resolver : Resolver.t;
   universe : Universe.t;
-  resolutions : Resolutions.t;
+  resolutions : Package.Resolutions.t;
 }
 
 module Explanation = struct
@@ -27,7 +26,7 @@ module Explanation = struct
     | Missing of chain * Resolver.Resolution.t list
 
   and chain =
-    Req.t * Package.t list
+    Package.Deps.t * Package.t list
 
   let empty = []
 
@@ -36,12 +35,12 @@ module Explanation = struct
     let ppEm pp = Fmt.styled `Bold pp in
     let ppErr pp = Fmt.styled `Bold (Fmt.styled `Red pp) in
 
-    let ppChain fmt (req, path) =
+    let ppChain fmt (deps, path) =
       let ppPkgName fmt pkg = Fmt.string fmt pkg.Package.name in
       let sep = Fmt.unit " -> " in
       Fmt.pf fmt
         "@[<v>%a@,(required by %a)@]"
-        (ppErr Req.pp) req Fmt.(list ~sep (ppEm ppPkgName)) (List.rev path)
+        (ppErr Package.Deps.pp) deps Fmt.(list ~sep (ppEm ppPkgName)) (List.rev path)
     in
 
     let ppReason fmt = function
@@ -103,11 +102,8 @@ module Explanation = struct
     in
 
     let resolveReq name requestor =
-      match Dependencies.findByName ~name requestor.Package.dependencies with
-      | Some req -> req
-      | None ->
-        let msg = Printf.sprintf "inconsistent state: no request found for %s" name in
-        failwith msg
+      let f {Package.Dep. name = depname; _} = name = depname in
+      Package.Deps.filter ~f requestor.Package.dependencies
     in
 
     let resolveReqViaDepChain pkg =
@@ -120,15 +116,15 @@ module Explanation = struct
       let seenConflictFor reqa reqb reasons =
         let f = function
           | Conflict ((ereqa, _), (ereqb, _)) ->
-            Req.(toString ereqa = toString reqa && toString ereqb = toString reqb)
+            Package.Deps.(show ereqa = show reqa && show ereqb = show reqb)
           | Missing _ -> false
         in
         List.exists ~f reasons
       in
-      let seenMissingFor req reasons =
+      let seenMissingFor deps reasons =
         let f = function
-          | Missing ((ereq, _), _) ->
-            Req.(toString req = toString ereq)
+          | Missing ((edeps, _), _) ->
+            Package.Deps.(show deps = show edeps)
           | Conflict _ -> false
         in
         List.exists ~f reasons
@@ -160,8 +156,8 @@ module Explanation = struct
             then
               let chain = (req, pkg::path) in
               let%bind _req, available =
-                let req = Req.make ~name:(Req.name req) ~spec:"*" in
-                Resolver.resolve ~req resolver
+                (** TODO: implement *)
+                return (req, [])
               in
               let missing = Missing (chain, available) in
               return (missing::reasons)
@@ -204,19 +200,22 @@ let make ~cfg ?resolver ~resolutions () =
 
   return {cfg; resolver; universe = !universe; resolutions}
 
-let add ~(dependencies : Dependencies.t) solver =
+let add ~(dependencies : Package.Deps.t) solver =
   let open RunAsync.Syntax in
 
-  let rewriteReq req =
-    match PackageInfo.Resolutions.apply solver.resolutions req with
-    | Some req -> req
-    | None -> req
+  let rewriteDeps (deps : Package.Deps.t) =
+    let f dep =
+      match Package.Resolutions.apply solver.resolutions dep with
+      | Some dep -> dep
+      | None -> dep
+    in
+    Package.Deps.map ~f deps
   in
 
   let rewritePkgWithResolutions (pkg : Package.t) =
     {
       pkg with
-      dependencies = Dependencies.map ~f:rewriteReq pkg.dependencies
+      dependencies = rewriteDeps pkg.dependencies
     }
   in
 
@@ -230,27 +229,16 @@ let add ~(dependencies : Dependencies.t) solver =
       | Package.Esy ->
         let pkg = rewritePkgWithResolutions pkg in
         universe := Universe.add ~pkg !universe;
-        let%bind dependencies =
-          pkg.dependencies
-          |> Dependencies.toList
-          |> List.map ~f:addReq
-          |> RunAsync.List.joinAll
-        in
-        let pkg = {pkg with dependencies = Dependencies.ofList dependencies} in
+        let%bind dependencies = addDeps pkg.dependencies in
+        let pkg = {pkg with dependencies = dependencies} in
         universe := Universe.add ~pkg !universe;
         return ()
       | Package.Npm -> return ()
     else return ()
 
-  and addReq req =
-    let%lwt () =
-      let status = Format.asprintf "%a" Req.pp req in
-      report status
-    in
-    let%bind req, resolutions =
-      Resolver.resolve ~req solver.resolver
-      |> RunAsync.withContext ("resolving request: " ^ Req.toString req)
-    in
+  and addDep (name : string) (formula : Package.ConstraintFormula.t) =
+    let%lwt () = report name in
+    let%bind _req, resolutions = Resolver.resolve ~name ~formula solver.resolver in
 
     let%bind packages =
       resolutions
@@ -265,19 +253,16 @@ let add ~(dependencies : Dependencies.t) solver =
     in
 
     return req
+
+  and addDeps (deps : Package.Deps.t) =
+    deps
+    |> rewriteDeps
+    |> Package.Deps.looseConstraintsByName
+    |> List.map ~f:addDep
+    |> RunAsync.List.joinAll
   in
 
-  let%bind dependencies =
-    let%bind dependencies =
-      dependencies
-      |> Dependencies.toList
-      |> List.map ~f:(fun req ->
-          let req = rewriteReq req in
-          addReq req)
-      |> RunAsync.List.joinAll
-    in
-    return (Dependencies.(addMany ~reqs:dependencies empty))
-  in
+  let%bind dependencies = addDeps dependencies in
 
   let%lwt () = finish () in
 

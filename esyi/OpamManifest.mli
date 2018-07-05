@@ -47,3 +47,10 @@ val toPackageJson :
   t
   -> PackageInfo.Version.t
   -> PackageInfo.OpamInfo.t
+
+val toPackage :
+  name:string
+  -> version:PackageInfo.Version.t
+  -> OpamFile.URL.t option
+  -> OpamFile.OPAM.t
+  -> Package.t Run.t
